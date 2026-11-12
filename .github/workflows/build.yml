@@ -1,0 +1,43 @@
+name: Build APK
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build release APK
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk Youlldownload.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Youlldownload-apk
+          path: Youlldownload.apk
+
+      # On the default branch, also publish the APK as a "latest" GitHub release for easy phone download.
+      - name: Publish latest release
+        if: github.ref_name == github.event.repository.default_branch
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          prerelease: false
+          make_latest: true
+          files: Youlldownload.apk
