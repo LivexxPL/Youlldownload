@@ -46,6 +46,13 @@ class Engine(private val context: Context) {
             req.addOption("-x")
             req.addOption("--audio-format", format.ext)
             req.addOption("--audio-quality", "0")
+        } else if (format == OutFormat.GIF) {
+            // Video only; converted to GIF afterwards. GIFs above 720p are huge, so don't fetch more.
+            // Direct .gif links come through as-is.
+            val height = minOf(resolution.height ?: 720, 720)
+            req.addOption("-f", "bv*/b")
+            req.addOption("-S", "res:$height,vcodec:h264")
+            req.addOption("--merge-output-format", "mkv")
         } else {
             var height = resolution.height
             if (forCompression) height = minOf(height ?: 1080, 1080)

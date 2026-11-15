@@ -4,6 +4,7 @@ enum class OutFormat(val label: String, val ext: String, val mime: String, val i
     MP4("MP4 (video)", "mp4", "video/mp4", false),
     WEBM("WEBM (video)", "webm", "video/webm", false),
     MKV("MKV (video)", "mkv", "video/x-matroska", false),
+    GIF("GIF (animated, no sound)", "gif", "image/gif", false),
     MP3("MP3 (audio only)", "mp3", "audio/mpeg", true),
     M4A("M4A (audio only)", "m4a", "audio/mp4", true),
 }

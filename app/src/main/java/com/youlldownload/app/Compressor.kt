@@ -217,6 +217,72 @@ class Compressor(context: Context) {
         dir.listFiles()?.filter { it.name.startsWith("passlog") }?.forEach { it.delete() }
     }
 
+    // ---- gif -----------------------------------------------------------------------------
+
+    /**
+     * Converts a video to an animated GIF with a palette made for that clip (much cleaner colours
+     * than ffmpeg's default). Without [limit] it uses up to 480p (or the chosen resolution) at 15 fps.
+     * With [limit] it steps size and frame rate down until the GIF is under 10 MB.
+     */
+    fun makeGif(
+        input: File,
+        maxSide: Int?,
+        limit: Boolean,
+        outDir: File,
+        onProgress: (fraction: Float, status: String) -> Unit,
+    ): File {
+        cancelled = false
+        if (input.extension.equals("gif", true) && (!limit || input.length() < SIZE_LIMIT_BYTES)) return input
+
+        val info = probe(input)
+        if (!info.hasVideo) throw RuntimeException("This link has no video to turn into a GIF.")
+        val shortSide = min(info.width, info.height).takeIf { it > 0 } ?: 480
+        val startSide = minOf(shortSide, maxSide ?: 480)
+        val srcFps = info.fps.roundToInt().coerceAtLeast(1)
+        val steps = if (limit) {
+            listOf(1.0 to 15, 0.75 to 12, 0.6 to 10, 0.5 to 10, 0.4 to 8, 0.3 to 8)
+        } else listOf(1.0 to 15)
+
+        val dir = outDir
+        val palette = File(dir, "palette.png")
+        val output = File(dir, input.nameWithoutExtension + ".gif")
+
+        steps.forEachIndexed { i, (factor, maxFps) ->
+            val side = max(64, (startSide * factor).toInt()).let { it - it % 2 }
+            val fps = min(maxFps, srcFps)
+            val scale = if (info.width >= info.height) "scale=-2:$side:flags=lanczos" else "scale=$side:-2:flags=lanczos"
+            val base = "fps=$fps,$scale"
+            val label = "Making GIF ${side}p, $fps fps" + (if (i > 0) " (smaller, try ${i + 1})" else "")
+
+            // Pass 1: build the best 256-colour palette for this clip.
+            runFfmpeg(
+                listOf(ffmpeg.absolutePath, "-y", "-hide_banner", "-nostats", "-progress", "pipe:1",
+                    "-i", input.absolutePath, "-an", "-vf", "$base,palettegen=stats_mode=diff",
+                    "-update", "1", palette.absolutePath),
+                dir, info.durationSec,
+            ) { onProgress(it * 0.3f, label) }
+
+            // Pass 2: render the GIF with that palette.
+            runFfmpeg(
+                listOf(ffmpeg.absolutePath, "-y", "-hide_banner", "-nostats", "-progress", "pipe:1",
+                    "-i", input.absolutePath, "-i", palette.absolutePath, "-an",
+                    "-lavfi", "$base[x];[x][1:v]paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle",
+                    "-loop", "0", output.absolutePath),
+                dir, info.durationSec,
+            ) { onProgress(0.3f + it * 0.7f, label) }
+
+            if (!limit || output.length() in 1 until SIZE_LIMIT_BYTES) {
+                palette.delete()
+                return output
+            }
+        }
+        palette.delete()
+        output.delete()
+        throw RuntimeException(
+            "This clip is too long to fit as a GIF under 10 MB. Try MP4 with compression instead (much smaller)."
+        )
+    }
+
     // ---- audio ---------------------------------------------------------------------------
 
     private fun compressAudio(

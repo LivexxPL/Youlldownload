@@ -179,7 +179,7 @@ private fun MainScreen(state: UiState, vm: MainViewModel) {
                     modifier = Modifier.weight(1f),
                 )
                 Picker(
-                    label = if (state.compress) "Max resolution" else "Resolution",
+                    label = if (state.compress || state.format == OutFormat.GIF) "Max resolution" else "Resolution",
                     value = if (state.format.isAudio) "—" else state.resolution.label,
                     options = Resolution.entries.map { it.label },
                     enabled = !state.busy && !state.format.isAudio,

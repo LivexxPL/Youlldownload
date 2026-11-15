@@ -145,7 +145,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
 
-                    val finalFile = if (s.compress) {
+                    val finalFile = if (s.format == OutFormat.GIF) {
+                        _state.update { it.copy(progress = null, status = "Making GIF…") }
+                        val out = File(workDir, "out").apply { mkdirs() }
+                        compressor.makeGif(downloaded, s.resolution.height, s.compress, out) { f, msg ->
+                            _state.update { it.copy(progress = f, status = "$msg · ${(f * 100).toInt()}%") }
+                        }
+                    } else if (s.compress) {
                         _state.update { it.copy(progress = null, status = "Preparing compression…") }
                         val out = File(workDir, "out").apply { mkdirs() }
                         compressor.compress(downloaded, s.format, s.resolution.height, out) { f, msg ->
