@@ -1,6 +1,6 @@
 # Youlldownload
 
-A simple Android app: paste a link from YouTube, TikTok, Instagram, X/Twitter, Reddit, Facebook, Vimeo and
+A simple Android and desktop app: paste a link from YouTube, TikTok, Instagram, X/Twitter, Reddit, Facebook, Vimeo and
 [many more sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md), tap **Download**, and the
 video is saved to `Downloads/Youlldownload`.
 
@@ -19,6 +19,25 @@ video is saved to `Downloads/Youlldownload`.
 
 ## Install
 
+### Desktop (Windows, macOS, Linux)
+
+Download from the **Releases** page and unzip:
+
+- **Windows:** `Youlldownload-windows.zip` → open the folder → run `Youlldownload.exe`.
+  If SmartScreen warns ("unknown publisher"), click *More info → Run anyway*.
+- **macOS (Apple Silicon):** `Youlldownload-macos.zip` → move `Youlldownload.app` to Applications.
+  First launch: right-click the app → *Open* → *Open* (it isn't signed by Apple).
+- **Linux:** `Youlldownload-linux.tar.gz` → extract → run `Youlldownload/Youlldownload`.
+
+Same features as the phone app: *Download link* and *Convert file* tabs, format, resolution,
+*Compress to under 10 MB*, GIF. Files go to `Downloads/Youlldownload` (changeable).
+*Help → Update yt-dlp* fetches the newest yt-dlp if a site stops working.
+
+To run from source instead: `pip install -r desktop/requirements.txt` then `python desktop/run.py`
+(needs Python 3.10+ with Tkinter).
+
+### Android
+
 Grab `Youlldownload.apk` from the **Releases** page (or the latest run in the **Actions** tab), open it on your
 phone and allow "install unknown apps". Android 8.0+, ARM phones.
 
@@ -34,7 +53,7 @@ phone and allow "install unknown apps". Android 8.0+, ARM phones.
 - Compression runs on the phone's CPU: a 1–3 minute clip usually takes a minute or two. Keep the app open.
 - Only download content you have the right to download.
 
-## Build
+## Build (Android)
 
 ```
 ./gradlew assembleRelease

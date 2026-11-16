@@ -199,7 +199,12 @@ class Compressor(context: Context) {
                 "-pix_fmt", "yuv420p", "-profile:v", "high",
             )
         }
-        val common = listOf(ffmpeg.absolutePath, "-y", "-hide_banner", "-nostats", "-progress", "pipe:1", "-i", input.absolutePath)
+        // Same frame timing in both passes: otherwise the MP4 muxer may duplicate a frame in pass 2,
+        // x264 then gets more frames than its pass-1 stats and errors out, crashes or hangs.
+        val common = listOf(
+            ffmpeg.absolutePath, "-y", "-hide_banner", "-nostats", "-progress", "pipe:1",
+            "-i", input.absolutePath, "-fps_mode", "passthrough",
+        )
 
         // Pass 1: analysis only.
         val pass1 = common + listOf("-map", "0:v:0") + vf + videoCodec +

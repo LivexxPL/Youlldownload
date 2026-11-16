@@ -1,0 +1,92 @@
+name: Build desktop app
+
+on:
+  push:
+    paths:
+      - "desktop/**"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            asset: Youlldownload-windows.zip
+          - os: macos-latest
+            asset: Youlldownload-macos.zip
+          - os: ubuntu-22.04
+            asset: Youlldownload-linux.tar.gz
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Check bundled ffmpeg has the needed encoders
+        run: |
+          FF=$(python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
+          "$FF" -hide_banner -encoders > enc.txt
+          for e in libx264 libvpx-vp9 libopus libmp3lame aac; do
+            grep -q " $e " enc.txt && echo "ok: $e" || { echo "MISSING: $e"; exit 1; }
+          done
+
+      - name: Smoke test conversion, compression and GIF
+        run: |
+          FF=$(python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")
+          "$FF" -loglevel error -f lavfi -i testsrc2=size=640x360:rate=30 -f lavfi -i sine -t 15 \
+            -c:v libx264 -b:v 8M -c:a aac -f mpegts test.ts
+          python - <<'PY'
+          import os, imageio_ffmpeg
+          from youlldownload.media import Media
+          from youlldownload.formats import OutFormat as F
+          m = Media(imageio_ffmpeg.get_ffmpeg_exe()); os.makedirs("o", exist_ok=True)
+          p = lambda f, s: None
+          for name, fn in [
+              ("mp4", lambda: m.convert("test.ts", F.MP4, None, "o", p)),
+              ("mp3", lambda: m.convert("test.ts", F.MP3, None, "o", p)),
+              ("compress", lambda: m.compress("test.ts", F.MP4, None, "o", p)),
+              ("gif", lambda: m.make_gif("test.ts", 240, True, "o", p)),
+          ]:
+              out = fn(); size = os.path.getsize(out)
+              print(name, out, size); assert 0 < size < 10_000_000
+          PY
+
+      - name: Build app
+        run: python build.py
+
+      - name: Package
+        run: |
+          cd dist
+          case "${{ runner.os }}" in
+            Windows) 7z a "../${{ matrix.asset }}" Youlldownload ;;
+            macOS)   ditto -c -k --keepParent Youlldownload.app "../${{ matrix.asset }}" ;;
+            Linux)   tar czf "../${{ matrix.asset }}" Youlldownload ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: desktop/${{ matrix.asset }}
+
+      - name: Publish to the "latest" release
+        if: github.ref_name == github.event.repository.default_branch
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          files: desktop/${{ matrix.asset }}

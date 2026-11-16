@@ -103,6 +103,7 @@ class Engine(private val context: Context) {
     private fun cleanError(raw: String?): String {
         val lines = raw.orEmpty().lines().map { it.trim() }.filter { it.isNotEmpty() }
         val err = lines.lastOrNull { it.startsWith("ERROR:") } ?: lines.lastOrNull()
-        return err?.removePrefix("ERROR:")?.trim()?.take(300) ?: "Download failed."
+        return err?.removePrefix("ERROR:")?.substringBefore("; please report this issue")?.trim()?.take(300)
+            ?: "Download failed."
     }
 }
