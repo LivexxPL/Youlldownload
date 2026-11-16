@@ -5,13 +5,16 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.text.format.Formatter
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -40,6 +43,8 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -97,8 +102,15 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND) {
-            intent.getStringExtra(Intent.EXTRA_TEXT)?.let { vm.onSharedText(it) }
+        when (intent?.action) {
+            Intent.ACTION_SEND -> {
+                @Suppress("DEPRECATION")
+                val stream = intent.getParcelableExtra<Uri>(Intent.EXTRA_STREAM)
+                if (stream != null) vm.setFile(stream)
+                else intent.getStringExtra(Intent.EXTRA_TEXT)?.let { vm.onSharedText(it) }
+            }
+            // "Open with Youlldownload" from a file manager.
+            Intent.ACTION_VIEW -> intent.data?.let { vm.setFile(it) }
         }
     }
 }
@@ -120,6 +132,10 @@ private fun AppTheme(content: @Composable () -> Unit) {
 private fun MainScreen(state: UiState, vm: MainViewModel) {
     val ctx = LocalContext.current
     var menuOpen by remember { mutableStateOf(false) }
+    val pickFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(vm::setFile)
+    }
+    val fileMode = state.mode == Mode.FILE
 
     Scaffold(
         topBar = {
@@ -148,7 +164,31 @@ private fun MainScreen(state: UiState, vm: MainViewModel) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            OutlinedTextField(
+            TabRow(selectedTabIndex = state.mode.ordinal) {
+                Tab(selected = !fileMode, onClick = { vm.setMode(Mode.LINK) }, enabled = !state.busy,
+                    text = { Text("Download link") })
+                Tab(selected = fileMode, onClick = { vm.setMode(Mode.FILE) }, enabled = !state.busy,
+                    text = { Text("Convert file") })
+            }
+
+            if (fileMode) {
+                OutlinedButton(
+                    // Any type: .ts and other video files are often labelled oddly by file managers.
+                    onClick = { pickFile.launch(arrayOf("*/*")) },
+                    enabled = !state.busy,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                ) { Text(if (state.fileUri == null) "Choose a file" else "Choose another file") }
+                Text(
+                    state.fileName?.let { n ->
+                        if (state.fileSize > 0) "$n · ${Formatter.formatFileSize(ctx, state.fileSize)}" else n
+                    } ?: "Any video or audio file: TS, MOV, AVI, MKV, WEBM, FLV, 3GP, WAV, FLAC…",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (state.fileName == null) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            } else OutlinedTextField(
                 value = state.url,
                 onValueChange = vm::setUrl,
                 label = { Text("Paste a video link") },
@@ -180,8 +220,8 @@ private fun MainScreen(state: UiState, vm: MainViewModel) {
                 )
                 Picker(
                     label = if (state.compress || state.format == OutFormat.GIF) "Max resolution" else "Resolution",
-                    value = if (state.format.isAudio) "—" else state.resolution.label,
-                    options = Resolution.entries.map { it.label },
+                    value = if (state.format.isAudio) "—" else resolutionLabel(state.resolution, fileMode),
+                    options = Resolution.entries.map { resolutionLabel(it, fileMode) },
                     enabled = !state.busy && !state.format.isAudio,
                     onPick = { vm.setResolution(Resolution.entries[it]) },
                     modifier = Modifier.weight(1f),
@@ -208,9 +248,9 @@ private fun MainScreen(state: UiState, vm: MainViewModel) {
             } else {
                 Button(
                     onClick = vm::start,
-                    enabled = state.engineReady && state.url.isNotBlank(),
+                    enabled = state.engineReady && (if (fileMode) state.fileUri != null else state.url.isNotBlank()),
                     modifier = Modifier.fillMaxWidth().height(52.dp),
-                ) { Text("Download") }
+                ) { Text(if (fileMode) "Convert" else "Download") }
             }
 
             if (state.busy || !state.engineReady) {
@@ -231,6 +271,9 @@ private fun MainScreen(state: UiState, vm: MainViewModel) {
         }
     }
 }
+
+private fun resolutionLabel(r: Resolution, fileMode: Boolean) =
+    if (fileMode && r == Resolution.BEST) "Keep original" else r.label
 
 @Composable
 private fun Picker(

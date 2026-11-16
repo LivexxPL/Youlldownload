@@ -34,6 +34,8 @@ class Compressor(context: Context) {
         val hasVideo: Boolean,
         val hasAudio: Boolean,
         val bitrateKbps: Int,
+        val videoCodec: String = "",
+        val audioCodec: String = "",
     )
 
     fun cancel() {
@@ -53,20 +55,23 @@ class Compressor(context: Context) {
         val fmt = json.optJSONObject("format")
         val streams = json.optJSONArray("streams")
         var w = 0; var h = 0; var fps = 30.0; var hasV = false; var hasA = false
+        var vCodec = ""; var aCodec = ""
         for (i in 0 until (streams?.length() ?: 0)) {
             val s = streams!!.getJSONObject(i)
             when (s.optString("codec_type")) {
                 "video" -> if (!hasV && s.optJSONObject("disposition")?.optInt("attached_pic") != 1) {
                     hasV = true
+                    vCodec = s.optString("codec_name")
                     w = s.optInt("width"); h = s.optInt("height")
                     fps = parseRate(s.optString("avg_frame_rate")) ?: parseRate(s.optString("r_frame_rate")) ?: 30.0
                 }
-                "audio" -> hasA = true
+                "audio" -> if (!hasA) { hasA = true; aCodec = s.optString("codec_name") }
             }
         }
         val duration = fmt?.optString("duration")?.toDoubleOrNull() ?: 0.0
         val bitrate = (fmt?.optString("bit_rate")?.toLongOrNull() ?: 0L) / 1000
-        return Info(duration, w, h, fps, hasV, hasA, bitrate.toInt())
+        if (!hasV && !hasA) throw RuntimeException("This file isn't a video or audio file that can be read.")
+        return Info(duration, w, h, fps, hasV, hasA, bitrate.toInt(), vCodec, aCodec)
     }
 
     /**
@@ -217,6 +222,88 @@ class Compressor(context: Context) {
         dir.listFiles()?.filter { it.name.startsWith("passlog") }?.forEach { it.delete() }
     }
 
+    // ---- plain conversion (files) --------------------------------------------------------
+
+    /**
+     * Converts a local file to [format] with as little quality loss as possible: each stream
+     * (video, audio) is copied untouched when the target container supports its codec, and only
+     * re-encoded (high quality) when it doesn't, or when [maxHeight] asks for a smaller size.
+     * E.g. a .ts with H.264 + AAC becomes an .mp4 in seconds, with zero quality loss.
+     */
+    fun convert(
+        input: File,
+        format: OutFormat,
+        maxHeight: Int?,
+        outDir: File,
+        onProgress: (fraction: Float, status: String) -> Unit,
+    ): File {
+        cancelled = false
+        val info = probe(input)
+        val output = File(outDir, input.nameWithoutExtension + "." + format.ext)
+        if (format.isAudio && !info.hasAudio) throw RuntimeException("This file has no sound to turn into ${format.ext.uppercase()}.")
+        if (!format.isAudio && !info.hasVideo) throw RuntimeException("This file has no video. Pick MP3 or M4A instead.")
+
+        val shortSide = min(info.width, info.height)
+        val scale = maxHeight != null && shortSide > maxHeight
+        val vc = info.videoCodec
+        val ac = info.audioCodec
+        val copyVideo = !scale && when (format) {
+            OutFormat.MP4 -> vc in setOf("h264", "hevc", "av1", "mpeg4")
+            OutFormat.WEBM -> vc in setOf("vp8", "vp9", "av1")
+            OutFormat.MKV -> true
+            else -> false
+        }
+        val copyAudio = when (format) {
+            OutFormat.MP4 -> ac in setOf("aac", "mp3")
+            OutFormat.WEBM -> ac in setOf("opus", "vorbis")
+            OutFormat.MKV -> true
+            OutFormat.MP3 -> ac == "mp3"
+            OutFormat.M4A -> ac in setOf("aac", "alac")
+            OutFormat.GIF -> false
+        }
+
+        fun command(copyV: Boolean, copyA: Boolean): List<String> {
+            val cmd = mutableListOf(ffmpeg.absolutePath, "-y", "-hide_banner", "-nostats", "-progress", "pipe:1",
+                "-i", input.absolutePath)
+            if (format.isAudio) {
+                cmd += listOf("-vn", "-map", "0:a:0")
+            } else {
+                cmd += listOf("-map", "0:v:0", "-map", "0:a:0?")
+                cmd += when {
+                    copyV -> listOf("-c:v", "copy") + (if (format == OutFormat.MP4 && vc == "hevc") listOf("-tag:v", "hvc1") else emptyList())
+                    format == OutFormat.WEBM -> listOf("-c:v", "libvpx-vp9", "-crf", "31", "-b:v", "0", "-row-mt", "1",
+                        "-deadline", "good", "-cpu-used", "4", "-pix_fmt", "yuv420p")
+                    else -> listOf("-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p")
+                }
+                if (!copyV && scale) {
+                    cmd += listOf("-vf", if (info.width >= info.height) "scale=-2:$maxHeight" else "scale=$maxHeight:-2")
+                }
+            }
+            if (info.hasAudio) cmd += when {
+                copyA -> listOf("-c:a", "copy")
+                format == OutFormat.MP3 -> listOf("-c:a", "libmp3lame", "-q:a", "0")
+                format == OutFormat.WEBM -> listOf("-c:a", "libopus", "-b:a", "160k")
+                else -> listOf("-c:a", "aac", "-b:a", "192k")
+            }
+            if (format == OutFormat.MP4 || format == OutFormat.M4A) cmd += listOf("-movflags", "+faststart")
+            cmd += output.absolutePath
+            return cmd
+        }
+
+        val v = if (format.isAudio) copyAudio else copyVideo && (copyAudio || !info.hasAudio)
+        val label = if (v) "Converting (no quality loss)" else "Converting to ${format.ext.uppercase()} (re-encoding)"
+        try {
+            runFfmpeg(command(copyVideo, copyAudio), outDir, info.durationSec) { onProgress(it, label) }
+        } catch (e: Exception) {
+            if (cancelled || (!copyVideo && !copyAudio)) throw e
+            // Copying a stream failed (odd timestamps etc.): fall back to a full re-encode.
+            output.delete()
+            val again = "Converting to ${format.ext.uppercase()} (re-encoding)"
+            runFfmpeg(command(false, false), outDir, info.durationSec) { onProgress(it, again) }
+        }
+        return output
+    }
+
     // ---- gif -----------------------------------------------------------------------------
 
     /**
@@ -306,8 +393,9 @@ class Compressor(context: Context) {
     }
 
     private fun tryRemux(input: File, output: File, format: OutFormat): Boolean = try {
-        val cmd = listOf(ffmpeg.absolutePath, "-y", "-hide_banner", "-i", input.absolutePath,
-            "-map", "0:v:0?", "-map", "0:a:0?", "-c", "copy") +
+        val maps = if (format.isAudio) listOf("-map", "0:a:0") else listOf("-map", "0:v:0?", "-map", "0:a:0?")
+        val cmd = listOf(ffmpeg.absolutePath, "-y", "-hide_banner", "-i", input.absolutePath) + maps +
+            listOf("-c", "copy") +
             (if (format == OutFormat.MP4) listOf("-movflags", "+faststart") else emptyList()) +
             listOf(output.absolutePath)
         run(cmd, output.parentFile!!)

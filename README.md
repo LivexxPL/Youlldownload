@@ -11,6 +11,10 @@ video is saved to `Downloads/Youlldownload`.
   Files already under 10 MB are left untouched. For GIFs it steps size and frame rate down until the GIF fits.
 - **GIF:** any video link becomes a looping GIF (up to 480p / 15 fps by default, with a palette tuned to the clip).
   Direct `.gif` links are saved as-is.
+- **Convert files:** on the *Convert file* tab pick any video/audio file on your phone (e.g. `.ts`, `.mov`, `.avi`,
+  `.flv`, `.wav`) and convert it to MP4, WEBM, MKV, GIF, MP3 or M4A. Streams the new format can hold are copied
+  untouched (e.g. `.ts` → `.mp4` takes seconds with zero quality loss); the rest is re-encoded at high quality.
+  The resolution and *Compress to under 10 MB* options work here too. You can also share a file to the app.
 - **Share to app:** in YouTube/TikTok/Instagram tap *Share → Youlldownload* and the link is filled in.
 
 ## Install
