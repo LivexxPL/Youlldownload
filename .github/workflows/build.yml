@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APKs
 
 on:
   push:
@@ -23,16 +23,22 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build release APK
+      - name: Build release APKs
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease
+          ./gradlew --no-daemon :numbers:testDebugUnitTest assembleRelease
           cp app/build/outputs/apk/release/app-release.apk Youlldownload.apk
+          cp numbers/build/outputs/apk/release/numbers-release.apk NumbersConverter.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: Youlldownload-apk
           path: Youlldownload.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NumbersConverter-apk
+          path: NumbersConverter.apk
 
       # On the default branch, also publish the APK as a "latest" GitHub release for easy phone download.
       - name: Publish latest release
@@ -43,4 +49,6 @@ jobs:
           name: Latest build
           prerelease: false
           make_latest: true
-          files: Youlldownload.apk
+          files: |
+            Youlldownload.apk
+            NumbersConverter.apk

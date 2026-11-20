@@ -41,6 +41,20 @@ To run from source instead: `pip install -r desktop/requirements.txt` then `pyth
 Grab `Youlldownload.apk` from the **Releases** page (or the latest run in the **Actions** tab), open it on your
 phone and allow "install unknown apps". Android 8.0+, ARM phones.
 
+## Numbers Converter (separate app)
+
+A second, standalone APK in this repo (`numbers/`): converts Apple Numbers spreadsheets (`.numbers`) to
+**PDF** and/or **Word (.docx)** right on the phone — no upload, no internet needed.
+
+- Grab `NumbersConverter.apk` from the **Releases** page (or the **Actions** tab), install it like the main app.
+- Tap *Choose a .numbers file* (or *Share / Open with → Numbers Converter* from Files, Drive, email…),
+  tick PDF and/or Word, tap **Convert**. Files go to `Downloads/NumbersConverter`.
+- Every sheet and table is converted, using the values Numbers last calculated (formulas show their results),
+  with number / currency / percent / date / duration / checkbox formats. Header rows are repeated on each page.
+- Wide tables switch to landscape, wrap long text, and if still too wide are split into column groups.
+- Not carried over: charts, images, text boxes, cell colours/fonts and merged cells (merged text shows in
+  the first cell). Files from Numbers '09 or older aren't supported — re-save them in a newer Numbers.
+
 ## How it works
 
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) + ffmpeg via [youtubedl-android](https://github.com/yausername/youtubedl-android)
@@ -58,4 +72,6 @@ phone and allow "install unknown apps". Android 8.0+, ARM phones.
 ```
 ./gradlew assembleRelease
 ```
-Requires JDK 17 and the Android SDK (API 35). The APK is at `app/build/outputs/apk/release/app-release.apk`.
+Requires JDK 17 and the Android SDK (API 35). The APKs are at `app/build/outputs/apk/release/app-release.apk`
+(Youlldownload) and `numbers/build/outputs/apk/release/numbers-release.apk` (Numbers Converter).
+Build just one with `./gradlew :app:assembleRelease` or `./gradlew :numbers:assembleRelease`.

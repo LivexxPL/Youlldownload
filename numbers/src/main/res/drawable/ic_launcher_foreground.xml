@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Spreadsheet: outer frame with a header band and grid lines -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,36h40v36H34z M37,46v7h10v-7z M50,46v7h21v-7z M37,56v6h10v-6z M50,56v6h21v-6z M37,65v4h10v-4z M50,65v4h21v-4z"
+        android:fillType="evenOdd" />
+</vector>
